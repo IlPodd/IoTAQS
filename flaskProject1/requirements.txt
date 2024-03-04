@@ -1,0 +1,5 @@
+mongoengine
+datetime
+bson
+flask
+paho-mqtt
