@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1>Control Panel</h1>
+<p>This page shows the status of all barriers and allows you to open/close them.</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Barrier ID</th>
+            <th>Status</th>
+            <th>Action</th>m
+            <th>Location</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for barrier in barriers %}
+        <tr>
+            <td>{{ barrier.barrier_id }}</td>
+            <td id="status-{{ barrier.barrier_id }}">{{ 'Open' if barrier.status else 'Closed' }}</td>
+            <td>
+                <button onclick="controlBarrier('{{ barrier.barrier_id }}', 'open')">Open</button>
+                <button onclick="controlBarrier('{{ barrier.barrier_id }}', 'close')">Close</button>
+            </td>
+            <td>{{ barrier.Zone }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<table>
+    <thead>
+        <tr>
+            <th>Zone</th>
+            <th>Air Quality Index (in ppm)</th>
+            <th>Action Suggested</th>
+            <th>Last Update</th>
+            <th>Last Update Device</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% if zones %}
+            {% for zone in zones %}
+            <tr>
+                <td>{{ zone.zone or 'N/A' }}</td>
+                <td>{{ zone.sensors.get("AQM", 'N/A') }}</td>
+                <td>
+                    {% set aqm_value = zone.sensors.get("AQM") %}
+                    {% if aqm_value is not none %}
+                        {{ 'Close' if aqm_value | float > 3 else 'None' }}
+                    {% else %}
+                        {{ 'N/A' }}
+                    {% endif %}
+                </td>
+                <td>{{ zone.get('time', 'N/A') }} </td>
+                <td>{{ zone.get('device_id','N/A')}}</td>
+            </tr>
+            {% endfor %}
+        {% else %}
+            <tr>
+                <td colspan="5">No entries found.</td>
+            </tr>
+        {% endif %}
+    </tbody>
+</table>
+
+
+<script>
+function controlBarrier(barrierId, action) {
+    fetch('/control_barrier', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            barrier_id: barrierId,
+            action: action
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === "success") {
+            document.getElementById(`status-${barrierId}`).innerText = action === 'open' ? 'Open' : 'Closed';
+        } else {
+            alert('Failed to control barrier: ' + data.message);
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+</script>
+
+{% endblock %}

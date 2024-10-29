@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<p style="margin-top: 1cm;">This page will host the Air quality data in real time</p>
+<h1>Received Messages</h1>
+<ul id="message-list">
+    {% for message in messages %}
+    <li>{{ message }}</li>
+    {% endfor %}
+</ul>
+
+<button id="refresh-button">Refresh Data</button>
+
+<script>
+document.getElementById('refresh-button').addEventListener('click', function() {
+    fetch('/request_measurement', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Request sent:', data);
+        // Optionally, update UI or handle response
+    })
+    .catch(error => console.error('Error:', error));
+});
+</script>
+
+{% endblock %}

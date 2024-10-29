@@ -1,0 +1,71 @@
+/* Styles for the table */
+table {
+    width: 100%;                /* Full width of the container */
+    border-collapse: collapse;  /* Collapses the border between cells */
+    margin-top: 20px;           /* Adds space above the table */
+}
+
+th, td {
+    border: 1px solid #ccc;     /* Light grey border around cells */
+    padding: 8px;               /* Space inside cells */
+    text-align: left;           /* Aligns text to the left */
+    font-size: 16px;            /* Sets a comfortable font size */
+}
+
+th {
+    background-color: #4CAF50;  /* Green background for headers */
+    color: white;               /* White text for headers */
+}
+
+tbody tr:nth-child(even) {
+    background-color: #f2f2f2;  /* Light grey background for even rows */
+}
+
+tbody tr:hover {
+    background-color: #ddd;     /* Lighter grey background on hover */
+}
+
+/* Styles for the links */
+a {
+    color: #4CAF50;             /* Green color for links to match the header */
+    text-decoration: none;      /* No underline on links */
+    padding: 8px;               /* Padding around link text */
+    border-radius: 4px;         /* Rounded corners for the link blocks */
+    display: inline-block;      /* Block-like behavior for link placement */
+    margin: 5px;                /* Space around links */
+}
+
+a:hover {
+    background-color: #ddd;     /* Background on hover for links */
+}
+
+/* Select dropdown styling */
+select {
+    padding: 8px;               /* Padding inside the select box */
+    border-radius: 4px;         /* Rounded corners for the select box */
+    border: 1px solid #ccc;     /* Border color matching the table */
+}
+
+/* Form styling */
+form {
+    margin-top: 20px;           /* Space above the form */
+}
+
+/* Responsive adjustments if needed */
+@media (max-width: 768px) {
+    th, td {
+        padding: 12px;          /* Larger padding for better tap targets on mobile */
+    }
+}
+
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+
+    #map {
+        height: 100%;
+        width: 100%;
+    }
+

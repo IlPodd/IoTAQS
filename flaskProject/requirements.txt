@@ -1,0 +1,8 @@
+mongoengine
+datetime
+bson
+flask
+flask_socketio
+paho-mqtt
+pymongo
+s2sphere

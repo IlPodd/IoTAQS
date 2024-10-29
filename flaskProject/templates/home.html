@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+    <div class="text-center" style="margin-top: 2cm;">
+        <p>This service provides Air Quality information using an IoT approach.</p>
+        <p>Use the links below to explore different features of the system, including historical data, real-time data, and interactive maps of various zones.</p>
+
+        <div class="row">
+            <div class="col-md-4">
+                <a href="/History" class="text-decoration-none">
+                    <img src="{{ url_for('static', filename='history.jpg') }}" alt="Data History" class="img-fluid" style="width: 200px;">
+                    <h5>Data History</h5>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="/Maps" class="text-decoration-none">
+                    <img src="{{ url_for('static', filename='maps.jpg') }}" alt="Zones" class="img-fluid" style="width: 200px;">
+                    <h5>Zones</h5>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="/RealTime" class="text-decoration-none">
+                    <img src="{{ url_for('static', filename='real_time.jpg') }}" alt="Real-Time Data" class="img-fluid" style="width: 200px;">
+                    <h5>Real-Time Data</h5>
+                </a>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
