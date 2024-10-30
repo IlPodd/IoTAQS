@@ -9,17 +9,14 @@ import json
 from pymongo import MongoClient
 
 
-from utils.utils import send_mqtt_request, handle_sensor_message, handle_barrier_message,handle_broadcast_message,\
-    create_s2_cell, decode_message
+from utils.utils import send_mqtt_request, handle_sensor_message, handle_barrier_message,handle_broadcast_message, decode_message, transform_geo_zone
 
 from parameters.Database_parameters import db_name, db_host, db_port
-from parameters.Zone_JSON import geo_zones, geo_zones_json
+from parameters.Zone_JSON import geo_zones_json
 from parameters.MQTT_parameters import MQTT_PORT, MQTT_BROKER, MQTT_TOPIC_ZONE, MQTT_REQUEST_BROADCAST, \
     MQTT_BARRIER_CONTROL, MQTT_ALL_TOPIC
 
 from classes.CZone import Zone
-
-from s2sphere import LatLng, Cell
 
 """-----DataBase-----"""
 client = MongoClient(db_host, db_port)
@@ -95,7 +92,7 @@ mqtt_thread.start()
 last_message = None
 app = Flask(__name__)
 messages = []
-# Configure BasicAuth extension
+# Configure BasicAuth
 app.config['BASIC_AUTH_USERNAME'] = 'admin'
 app.config['BASIC_AUTH_PASSWORD'] = 'password'
 basic_auth = BasicAuth(app)
@@ -109,13 +106,6 @@ def create_zone():
     zone = Zone.create_zone(data["zone_id"], data["name"], data["barriers"], data["location"])
     return jsonify(zone.to_dict(), 201)
 
-
-@app.route("/get_zones", methods=["GET"])
-def get_zones():
-    zones = Zone.get_zones()
-    return jsonify([zone.to_dict() for zone in zones], 200)
-
-
 @app.route('/home', methods=['GET'])
 @app.route('/index', methods=['GET'])
 @app.route('/', methods=['GET'])
@@ -124,26 +114,12 @@ def home():
 
 
 
-
-# Generate S2 cell data for the zones
-s2_zones = []
-for zone in geo_zones_json:
-    lat, lng, _ = zone["p"]
-    cell_id = create_s2_cell(lat, lng)
-    cell = Cell(cell_id)
-    vertices = []
-    for i in range(4):
-        vertex = cell.get_vertex(i)
-        latlng = LatLng.from_point(vertex)
-        vertices.append((latlng.lat().degrees, latlng.lng().degrees))
-    s2_zones.append({"name": zone["n"], "vertices": vertices})
-
 """--------GET ZONE GEODATA PAGE------------"""
 
 
 @app.route('/GetZones', methods=['GET'])
 def send_zones():
-    return geo_zones
+    return transform_geo_zone(geo_zones_json)
 
 
 """----------------History Page"""
@@ -226,7 +202,7 @@ def zone_history():
 
 @app.route('/Maps', methods=['GET'])
 def visualize_zones():
-    return render_template('Maps.html', s2_zones=s2_zones)
+    return render_template('Maps.html')
 
 
 """---------REAL TIME AIR QUALITY PAGE"""

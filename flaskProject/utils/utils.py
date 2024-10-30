@@ -50,10 +50,12 @@ def handle_barrier_message(client, msg, data):
         client.publish(f"barrier/{barrier_id}/status", response_message)
         print(f"Response published to barrier/{barrier_id}/status")
 
+
 def create_s2_cell(lat, lng, level=19):
     latlng = LatLng.from_degrees(lat, lng)
     cell_id = CellId.from_lat_lng(latlng).parent(level)
     return cell_id
+
 
 def handle_sensor_message(client, msg, data):
     topic_parts = msg.topic.split('/')
@@ -109,3 +111,16 @@ def send_barrier_command(client, barrier_id, action, pending_commands):
     client.publish(topic, action)
     pending_commands[barrier_id] = {'action': action, 'time': datetime.utcnow()}
     print(f"Command '{action}' sent to barrier {barrier_id}")
+
+
+def transform_geo_zones(geo_zones_json):
+    # Iterate through each item in geo_zones_json and reformat it
+    transformed = [
+        [item["p"][0], item["p"][1], item["p"][2], item["n"]]
+        for item in geo_zones_json
+    ]
+
+    # Convert the transformed list to a JSON-style string
+    geo_zones = json.dumps(transformed)
+
+    return geo_zones

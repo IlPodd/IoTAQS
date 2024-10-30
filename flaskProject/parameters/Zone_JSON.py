@@ -1,17 +1,13 @@
-cell_side = 0.000116
+cell_side = 0.0006
 
 """DEFINING ZONES
 zones = [{ name:Name, center:latitude, longitude, half_width: cell_side }]"""
-zoneSE = [{"Name": "South East", "Center": "39.228376, 9.109906", "Width": cell_side}]
-zoneNE = [{"Name": "North East", "Center": "39.228534, 9.109764", "Width": cell_side}]
-zoneSO = [{"Name": "South West", "Center": "39.228494, 9.109559", "Width": cell_side}]
-zoneNO = [{"Name": "North West", "Center": "39.228293, 9.109721", "Width": cell_side}]
 
 geo_zones_json= [
-    {"p": [39.228376, 9.109906, 0.000116], "n": "ParchettoSE"},
-    {"p": [39.228534, 9.109764, 0.000116], "n": "ParchettoNE"},
-    {"p": [39.228494, 9.109559, 0.000116], "n": "ParchettoNO"},
-    {"p": [39.228293, 9.109721, 0.000116], "n": "ParchettoSO"}
+    {"p": [39.228272, 9.109862, cell_side], "n": "Parchetto"},
+    {"p": [39.229247, 9.109036, cell_side], "n": "Segreteria"},
+    {"p": [39.230172, 9.108120, cell_side], "n": "Biblioteca"},
+    {"p": [39.230572, 9.106862, cell_side], "n": "Sterrato"}
 ]
 
-geo_zones  = "[{\"p\":[39.228376, 9.109906,0.000116 ] , \"n\":\"ParchettoSE\"},{\"p\":[39.228534, 9.109764,0.000116 ] , \"n\":\"ParchettoNO\"},{\"p\":[39.228494, 9.109559,0.000116 ] , \"n\":\"ParchettoNE\"},{\"p\":[39.228293, 9.109721,0.000116 ] , \"n\":\"ParchettoSO\"}]"
+geo_zones  = "[[39.228272, 9.109862,0.0006,\"Parchetto\"],[39.229247, 9.109036, 0.0006,\"Segreteria\"],[39.230172, 9.108120, 0.0006, \"Biblioteca\"],[39.230572, 9.106862, 0.0006,\"Sterrato\"]]"
