@@ -113,7 +113,10 @@ def send_barrier_command(client, barrier_id, action, pending_commands):
     print(f"Command '{action}' sent to barrier {barrier_id}")
 
 
-def transform_geo_zones(geo_zones_json):
+
+
+
+def transform_geo_zone(geo_zones_json):
     # Iterate through each item in geo_zones_json and reformat it
     transformed = [
         [item["p"][0], item["p"][1], item["p"][2], item["n"]]

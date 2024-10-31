@@ -23,6 +23,7 @@ client = MongoClient(db_host, db_port)
 db = client[db_name]
 barriers_collection = db['barriers']
 zone_collection = db['Zone']
+requests_collection = db["requests"]
 devices_collection = db['devices']
 sensors_collection = db['sensors']
 
@@ -211,16 +212,86 @@ def visualize_zones():
 # Route to render real-time data page
 @app.route('/RealTime', methods=['GET'])
 def real_time():
-    # Placeholder for initial messages (replace with actual data received from MQTT)
-    messages = ["Placeholder message 1", "Placeholder message 2"]
-    return render_template('real_time_data.html', messages=messages)
+    # Get the sorting parameters from the query string (default to 'zone' ascending)
+    sort_field = request.args.get('sort_field', 'zone')
+    sort_order = int(request.args.get('sort_order', 1))  # 1 for ascending, -1 for descending
+
+    # Map sort_field to the correct field in MongoDB
+    field_map = {
+        'zone': 'zone',
+        'AQM': 'sensors.AQM',
+        'Temperature': 'sensors.Temperature',
+        'Humidity': 'sensors.Humidity',
+        'status': 'status',
+        'time': 'time'
+    }
+    # Ensure the sort_field is valid
+    sort_field_mongo = field_map.get(sort_field, 'zone')
+
+    try:
+        # Aggregation pipeline to get the most recent entry per zone
+        pipeline = [
+            {
+                '$sort': {'time': -1}  # Sort by 'time' in descending order to get the latest entry per zone
+            },
+            {
+                '$group': {
+                    '_id': '$zone',
+                    'zone': {'$first': '$zone'},
+                    'time': {'$first': '$time'},
+                    'sensors': {'$first': '$sensors'},
+                    'DEVICE_ID': {'$first': '$DEVICE_ID'}
+                }
+            },
+            # We'll sort after merging with status
+        ]
+        zones_cursor = zone_collection.aggregate(pipeline)
+        zones = list(zones_cursor)
+
+        # Fetch statuses from 'barriers' collection and create a map of status by zone
+        barriers_cursor = barriers_collection.find({}, {'zone': 1, 'status': 1})
+        status_map = {barrier['zone']: barrier['status'] for barrier in barriers_cursor}
+
+        # Attach the 'status' to each zone entry
+        for zone in zones:
+            zone['status'] = status_map.get(zone['zone'], 'N/A')
+
+        # Now sort the zones list based on the selected field
+        from operator import itemgetter
+
+        # Handle nested fields for sorting
+        def get_nested_field(data, field_path):
+            fields = field_path.split('.')
+            for field in fields:
+                if isinstance(data, dict):
+                    data = data.get(field, None)
+                else:
+                    data = None
+            return data
+
+        zones.sort(
+            key=lambda x: get_nested_field(x, sort_field_mongo) or '',
+            reverse=(sort_order == -1)
+        )
+
+        # Check if the request is an AJAX call
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            # Convert datetime objects to strings for JSON serialization
+            from bson import json_util
+            return app.response_class(
+                json_util.dumps({'zones': zones}),
+                mimetype='application/json'
+            )
+
+        # Render template with zones data
+        return render_template('real_time_data.html', zones=zones)
+
+    except Exception as e:
+        print(f"Error fetching data from MongoDB: {e}")
+        return render_template('error.html', message="An error occurred while fetching data from the database.")
 
 
 # Route to handle request for new measurements via MQTT
-@app.route('/request_measurement', methods=['POST'])
-def request_measurement():
-    send_mqtt_request()
-    return jsonify({"status": "success"})
 
 
 """---------REAL TIME AIR QUALITY PAGE----"""
@@ -254,19 +325,6 @@ def login():
             return render_template('login.html', message="Invalid credentials. Please try again.")
     return render_template('login.html')
 
-@app.route('/control_barrier', methods=['POST'])
-def control_barrier():
-    data = request.json
-    barrier_id = data['barrier_id']
-    action = data['action']
-
-    # Publish MQTT message with the correct topic and payload
-    topic = f"IoTAQStation/barriers/Parchetto_NE/{barrier_id}"
-    payload = json.dumps({'command': action})
-
-    client.publish(topic, payload)
-
-    return jsonify({'status': 'success'})
 @app.route('/control_panel', methods=['GET'])
 @basic_auth.required
 def control_panel():
@@ -286,7 +344,7 @@ def control_panel():
                     'zone': {'$first': '$zone'},
                     'time': {'$first': '$time'},
                     'sensors': {'$first': '$sensors'},
-                    'device_id': {'$first': '$device_id'}
+                    'DEVICE_ID': {'$first': '$DEVICE_ID'}
                 }
             }
         ]
@@ -300,6 +358,25 @@ def control_panel():
         print(f"Error fetching data from MongoDB: {e}")
         return render_template('error.html', message="An error occurred while fetching data from the database.")
 
+@app.route('/control_barrier', methods=['POST'])
+def control_barrier():
+    data = request.json
+    barrier_id = data['barrier_id']
+    action = data['action']
+
+    # Publish MQTT message with the correct topic and payload
+    topic = f"IoTAQStation/barriers/{barrier_id}"
+    payload = json.dumps({'command': action})
+
+    client.publish(topic, payload)
+
+    return jsonify({'status': 'success'})
+
+@app.route('/notify', methods=['POST'])
+def notify():
+    data = request.get_json()
+    print(f"Notification received: {data}")  # Mock logging to console
+    return jsonify({"status": "success", "message": "Notification received"}), 200
 
 # Example usage
 if __name__ == '__main__':

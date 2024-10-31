@@ -2,32 +2,87 @@
 
 {% block content %}
 
-<p style="margin-top: 1cm;">This page will host the Air quality data in real time</p>
-<h1>Received Messages</h1>
-<ul id="message-list">
-    {% for message in messages %}
-    <li>{{ message }}</li>
-    {% endfor %}
-</ul>
-
-<button id="refresh-button">Refresh Data</button>
+<table>
+    <thead>
+        <tr>
+            <th onclick="sortTable('zone')">Zone</th>
+            <th onclick="sortTable('AQM')">Air Quality Index (in ppm)</th>
+            <th onclick="sortTable('Temperature')">Temperature</th>
+            <th onclick="sortTable('Humidity')">Humidity</th>
+            <th onclick="sortTable('status')">Status</th>
+            <th onclick="sortTable('time')">Last Update</th>
+        </tr>
+    </thead>
+    <tbody id="table-body">
+        {% if zones %}
+            {% for zone in zones %}
+            <tr>
+                <td>{{ zone.zone or 'N/A' }}</td>
+                <td>{{ zone.sensors.get("AQM", 'N/A') }}</td>
+                <td>{{ zone.sensors.get("Temperature", 'N/A') }}</td>
+                <td>{{ zone.sensors.get("Humidity", 'N/A') }}</td>
+                <td>
+                    {% if zone.status == True %}
+                        Open
+                    {% elif zone.status == False %}
+                        Closed
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td>{{ zone.get("time") if zone.time else 'N/A' }}</td>
+            </tr>
+            {% endfor %}
+        {% else %}
+            <tr>
+                <td colspan="6">No entries found.</td>
+            </tr>
+        {% endif %}
+    </tbody>
+</table>
 
 <script>
-document.getElementById('refresh-button').addEventListener('click', function() {
-    fetch('/request_measurement', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({})
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Request sent:', data);
-        // Optionally, update UI or handle response
-    })
-    .catch(error => console.error('Error:', error));
-});
+    let currentSortField = 'zone';
+    let currentSortOrder = 1; // 1 for ascending, -1 for descending
+
+    function sortTable(field) {
+        // Toggle sort order if the same field is clicked
+        if (currentSortField === field) {
+            currentSortOrder = -currentSortOrder;
+        } else {
+            currentSortField = field;
+            currentSortOrder = 1;
+        }
+
+        // Send AJAX request to fetch sorted data
+        fetch(`/RealTime?sort_field=${currentSortField}&sort_order=${currentSortOrder}`, {
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+        })
+        .then(response => response.json())
+        .then(data => {
+            const zones = data.zones;
+            const tableBody = document.getElementById('table-body');
+            tableBody.innerHTML = '';  // Clear existing rows
+
+            zones.forEach(zone => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${zone.zone || 'N/A'}</td>
+                    <td>${zone.sensors?.AQM || 'N/A'}</td>
+                    <td>${zone.sensors?.Temperature || 'N/A'}</td>
+                    <td>${zone.sensors?.Humidity || 'N/A'}</td>
+                    <td>${
+                        zone.status === true ? 'Open' :
+                        zone.status === false ? 'Closed' :
+                        'N/A'
+                    }</td>
+                    <td>${zone.time ? new Date(zone.time).toLocaleString() : 'N/A'}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        })
+        .catch(error => console.error('Error fetching sorted data:', error));
+    }
 </script>
 
 {% endblock %}

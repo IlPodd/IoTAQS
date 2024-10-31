@@ -10,7 +10,7 @@
         <tr>
             <th>Barrier ID</th>
             <th>Status</th>
-            <th>Action</th>m
+            <th>Action</th>
             <th>Location</th>
         </tr>
     </thead>
@@ -23,7 +23,7 @@
                 <button onclick="controlBarrier('{{ barrier.barrier_id }}', 'open')">Open</button>
                 <button onclick="controlBarrier('{{ barrier.barrier_id }}', 'close')">Close</button>
             </td>
-            <td>{{ barrier.Zone }}</td>
+            <td>{{ barrier.zone }}</td>
         </tr>
         {% endfor %}
     </tbody>
@@ -43,7 +43,7 @@
             {% for zone in zones %}
             <tr>
                 <td>{{ zone.zone or 'N/A' }}</td>
-                <td>{{ zone.sensors.get("AQM", 'N/A') }}</td>
+                <td class="aqm-value">{{ zone.sensors.get("AQM", 'N/A') }}</td>
                 <td>
                     {% set aqm_value = zone.sensors.get("AQM") %}
                     {% if aqm_value is not none %}
@@ -53,7 +53,7 @@
                     {% endif %}
                 </td>
                 <td>{{ zone.get('time', 'N/A') }} </td>
-                <td>{{ zone.get('device_id','N/A')}}</td>
+                <td>{{ zone.get('DEVICE_ID','N/A')}}</td>
             </tr>
             {% endfor %}
         {% else %}
@@ -63,7 +63,6 @@
         {% endif %}
     </tbody>
 </table>
-
 
 <script>
 function controlBarrier(barrierId, action) {
@@ -87,6 +86,43 @@ function controlBarrier(barrierId, action) {
     })
     .catch(error => console.error('Error:', error));
 }
+
+    // Set the AQM threshold for alert and the enterprise to notify
+    const AQM_THRESHOLD = 3;
+    const enterpriseNotificationURL = "/notify"; // Mock endpoint on the server
+
+    // Function to check visible AQM values and prompt an alert if needed
+function checkVisibleAQMValues() {
+        const aqmValues = document.querySelectorAll('.aqm-value');
+
+        aqmValues.forEach((element) => {
+            // Retrieve the AQM value from the text content
+            const aqmValue = parseFloat(element.innerText);
+
+            // Check if the AQM value is above threshold and display alert if so
+            if (!isNaN(aqmValue) && aqmValue > AQM_THRESHOLD) {
+                alert(`Warning: Air Quality Index in a visible zone exceeds the safe limit (${aqmValue} ppm). Action recommended: Close barrier. Public entities have been warned`);
+
+                // Send HTTP POST request to notify enterprise
+                fetch(enterpriseNotificationURL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: `Air Quality Index exceeds threshold: ${aqmValue} ppm`,
+                        zone: element.closest('tr').querySelector('td').innerText
+                    })
+                })
+                .then(response => response.json())
+                .then(data => console.log('Enterprise notified:', data))
+                .catch(error => console.error('Error notifying enterprise:', error));
+            }
+        });
+    }
+
+    // Run the function on page load to check only displayed entries
+    document.addEventListener('DOMContentLoaded', checkVisibleAQMValues);
 </script>
 
 {% endblock %}
