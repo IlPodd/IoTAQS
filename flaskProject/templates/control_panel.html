@@ -81,12 +81,41 @@ function controlBarrier(barrierId, action, zone) {
     .then(response => response.json())
     .then(data => {
         if (data.status === "success") {
-            document.getElementById(`status-${barrierId}`).innerText = action === 'open' ? 'Open' : 'Closed';
+            const requestId = data.request_id;
+
+            // Poll for confirmation of the barrier action
+            pollBarrierStatus(requestId, barrierId, action);
         } else {
             alert('Failed to control barrier: ' + data.message);
         }
     })
     .catch(error => console.error('Error:', error));
+}
+
+function pollBarrierStatus(requestId, barrierId, action) {
+    const pollInterval = 1000; // 1 second interval
+    const maxAttempts = 10;
+    let attempts = 0;
+
+    const intervalId = setInterval(() => {
+        fetch(`/check_barrier_status?request_id=${requestId}`)
+            .then(response => response.json())
+            .then(statusData => {
+                if (statusData.status === "completed") {
+                    // Update the UI only if action is confirmed
+                    document.getElementById(`status-${barrierId}`).innerText = action === 'open' ? 'Open' : 'Closed';
+                    clearInterval(intervalId); // Stop polling
+                } else if (attempts >= maxAttempts) {
+                    alert('Barrier control failed to confirm.');
+                    clearInterval(intervalId); // Stop polling after max attempts
+                }
+                attempts++;
+            })
+            .catch(error => {
+                console.error('Error checking barrier status:', error);
+                clearInterval(intervalId); // Stop polling on error
+            });
+    }, pollInterval);
 }
 
 

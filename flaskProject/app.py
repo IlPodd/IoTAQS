@@ -5,6 +5,9 @@ import math
 import paho.mqtt.client as mqtt
 import threading
 import json
+import datetime
+import uuid
+from bson import Binary
 
 from pymongo import MongoClient
 
@@ -13,8 +16,7 @@ from utils.utils import send_mqtt_request, handle_sensor_message, handle_barrier
 
 from parameters.Database_parameters import db_name, db_host, db_port
 from parameters.Zone_JSON import geo_zones_json
-from parameters.MQTT_parameters import MQTT_PORT, MQTT_BROKER, MQTT_TOPIC_ZONE, MQTT_REQUEST_BROADCAST, \
-    MQTT_BARRIER_CONTROL, MQTT_ALL_TOPIC
+from parameters.MQTT_parameters import *
 
 from classes.CZone import Zone
 
@@ -24,8 +26,6 @@ db = client[db_name]
 barriers_collection = db['barriers']
 zone_collection = db['Zone']
 requests_collection = db["requests"]
-devices_collection = db['devices']
-sensors_collection = db['sensors']
 
 """-----MQTT----"""
 
@@ -358,22 +358,69 @@ def control_panel():
         print(f"Error fetching data from MongoDB: {e}")
         return render_template('error.html', message="An error occurred while fetching data from the database.")
 
+
 @app.route('/control_barrier', methods=['POST'])
 def control_barrier():
     data = request.json
     print(f"Received request to control barrier: {data}")
+
     barrier_id = data['barrier_id']
     action = data['action']
     zone = data['zone']
+    time = datetime.datetime.now()
+    request_id = uuid.uuid4()
+    id_str = str(request_id)
+    request_binary = Binary.from_uuid(request_id)
 
     # Publish MQTT message with the correct topic and payload
-    topic = f"IoTAQStation/{zone}/barriers/{barrier_id}"
-    payload = json.dumps({'command': action})
+    topic_barrier_control = f"{MQTT_BARRIER_CONTROL_L}{zone}{MQTT_BARRIER_CONTROL_R}{barrier_id}"
+    payload = json.dumps({
+        'id': 'Server',
+        'type': 'command',
+        'data': action,
+        'time': str(time),
+        'id_request': id_str
+    })
 
-    client.publish(topic, payload)
-    print(f"Published to MQTT topic {topic} with payload {payload}")
+    client.publish(topic_barrier_control, payload)
+    print(f"Published to MQTT topic {topic_barrier_control} with payload {payload}")
 
-    return jsonify({'status': 'success'})
+    # Insert a new document in MongoDB to track the request with outcome pending
+    insert_request = {
+        'id_request': request_binary,
+        'barrier_id': barrier_id,
+        'id': 'Server',
+        'type': 'command',
+        'data': action,
+        'time': time,
+        'status': 'pending',
+        'outcome': 'pending'  # Initial outcome set to pending
+    }
+
+    try:
+        result = requests_collection.insert_one(insert_request)
+        print(f"Data Barrier inserted into MongoDB with object ID: {result.inserted_id}")
+    except Exception as e:
+        print(f'Error while inserting data into database: {e}')
+        return jsonify({'status': 'error', 'message': 'Failed to record barrier command'}), 500
+
+    return jsonify({'status': 'success', 'request_id': id_str, 'message': f"Barrier {barrier_id} control command sent"})
+
+
+@app.route('/check_barrier_status', methods=['GET'])
+def check_barrier_status():
+    request_id = request.args.get('request_id')
+    request_binary = Binary.from_uuid(uuid.UUID(request_id))
+
+    try:
+        result = requests_collection.find_one({'id_request': request_binary})
+        if result and result.get('status') == 'completed':
+            return jsonify({'status': 'completed'})
+        else:
+            return jsonify({'status': 'pending'})
+    except Exception as e:
+        print(f"Error checking barrier status: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/notify', methods=['POST'])
