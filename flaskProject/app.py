@@ -361,16 +361,20 @@ def control_panel():
 @app.route('/control_barrier', methods=['POST'])
 def control_barrier():
     data = request.json
+    print(f"Received request to control barrier: {data}")
     barrier_id = data['barrier_id']
     action = data['action']
+    zone = data['zone']
 
     # Publish MQTT message with the correct topic and payload
-    topic = f"IoTAQStation/barriers/{barrier_id}"
+    topic = f"IoTAQStation/{zone}/barriers/{barrier_id}"
     payload = json.dumps({'command': action})
 
     client.publish(topic, payload)
+    print(f"Published to MQTT topic {topic} with payload {payload}")
 
     return jsonify({'status': 'success'})
+
 
 @app.route('/notify', methods=['POST'])
 def notify():

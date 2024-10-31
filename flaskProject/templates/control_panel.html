@@ -10,8 +10,8 @@
         <tr>
             <th>Barrier ID</th>
             <th>Status</th>
-            <th>Action</th>
             <th>Location</th>
+            <th>Action</th>
         </tr>
     </thead>
     <tbody>
@@ -19,11 +19,12 @@
         <tr>
             <td>{{ barrier.barrier_id }}</td>
             <td id="status-{{ barrier.barrier_id }}">{{ 'Open' if barrier.status else 'Closed' }}</td>
-            <td>
-                <button onclick="controlBarrier('{{ barrier.barrier_id }}', 'open')">Open</button>
-                <button onclick="controlBarrier('{{ barrier.barrier_id }}', 'close')">Close</button>
-            </td>
             <td>{{ barrier.zone }}</td>
+
+        <td>
+            <button onclick="controlBarrier('{{ barrier.barrier_id }}', 'open', '{{ barrier.zone }}')">Open</button>
+            <button onclick="controlBarrier('{{ barrier.barrier_id }}', 'close', '{{ barrier.zone }}')">Close</button>
+        </td>
         </tr>
         {% endfor %}
     </tbody>
@@ -65,7 +66,7 @@
 </table>
 
 <script>
-function controlBarrier(barrierId, action) {
+function controlBarrier(barrierId, action, zone) {
     fetch('/control_barrier', {
         method: 'POST',
         headers: {
@@ -73,7 +74,8 @@ function controlBarrier(barrierId, action) {
         },
         body: JSON.stringify({
             barrier_id: barrierId,
-            action: action
+            action: action,
+            zone: zone
         })
     })
     .then(response => response.json())
@@ -86,6 +88,7 @@ function controlBarrier(barrierId, action) {
     })
     .catch(error => console.error('Error:', error));
 }
+
 
     // Set the AQM threshold for alert and the enterprise to notify
     const AQM_THRESHOLD = 3;
