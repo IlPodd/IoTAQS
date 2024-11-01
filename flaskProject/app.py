@@ -12,7 +12,7 @@ from bson import Binary
 from pymongo import MongoClient
 
 
-from utils.utils import send_mqtt_request, handle_sensor_message, handle_barrier_message,handle_broadcast_message, decode_message, transform_geo_zone
+from utils.utils import send_mqtt_request, handle_sensor_message, handle_barrier_message, decode_message, transform_geo_zone
 
 from parameters.Database_parameters import db_name, db_host, db_port
 from parameters.Zone_JSON import geo_zones_json
@@ -37,7 +37,6 @@ def on_connect(client, userdata, flags, rc):
 
 
 def on_message(client, userdata, msg):
-
     message_content = decode_message(msg)
 
     if message_content is None:
@@ -50,19 +49,18 @@ def on_message(client, userdata, msg):
 
     try:
         data = json.loads(message_content)
-        #print(f"Parsed JSON data: {data}") #debugging
+        message_type = data.get('type')
 
-        if msg.topic.startswith(MQTT_BARRIER_CONTROL):
-           # print('STARTING BARRIER HANDLE')
+        if message_type == 'status':
+            print('STARTING BARRIER STATUS HANDLE')
             handle_barrier_message(client, msg, data)
-        elif msg.topic.startswith(MQTT_REQUEST_BROADCAST):
-            handle_broadcast_message(client, msg,data)
-        elif msg.topic.startswith(MQTT_TOPIC_ZONE):
-           # print('STARTING Measurement HANDLE')
-
+        elif message_type == 'command':
+            pass  #command should not be received by the server
+        elif message_type == 'measurement':
+            print('STARTING MEASUREMENT HANDLE')
             handle_sensor_message(client, msg, data)
         else:
-            raise Exception(f"Unhandled topic: {msg.topic}")
+            print(f"Unhandled message type: {message_type}")
 
     except json.JSONDecodeError as e:
         print(f"JSON decode error: {e}")
@@ -71,7 +69,6 @@ def on_message(client, userdata, msg):
         print(f"Missing key in JSON data: {e}")
     except Exception as e:
         print(f"Error processing message: {e}")
-
 
 # MQTT client setup
 client = mqtt.Client()
@@ -370,7 +367,6 @@ def control_barrier():
     time = datetime.datetime.now()
     request_id = uuid.uuid4()
     id_str = str(request_id)
-    request_binary = Binary.from_uuid(request_id)
 
     # Publish MQTT message with the correct topic and payload
     topic_barrier_control = f"{MQTT_BARRIER_CONTROL_L}{zone}{MQTT_BARRIER_CONTROL_R}{barrier_id}"
@@ -387,14 +383,13 @@ def control_barrier():
 
     # Insert a new document in MongoDB to track the request with outcome pending
     insert_request = {
-        'id_request': request_binary,
+        'id_request': id_str,
         'barrier_id': barrier_id,
-        'id': 'Server',
         'type': 'command',
         'data': action,
         'time': time,
         'status': 'pending',
-        'outcome': 'pending'  # Initial outcome set to pending
+        'outcome': 'pending'
     }
 
     try:
@@ -405,15 +400,12 @@ def control_barrier():
         return jsonify({'status': 'error', 'message': 'Failed to record barrier command'}), 500
 
     return jsonify({'status': 'success', 'request_id': id_str, 'message': f"Barrier {barrier_id} control command sent"})
-
-
 @app.route('/check_barrier_status', methods=['GET'])
 def check_barrier_status():
     request_id = request.args.get('request_id')
-    request_binary = Binary.from_uuid(uuid.UUID(request_id))
 
     try:
-        result = requests_collection.find_one({'id_request': request_binary})
+        result = requests_collection.find_one({'id_request': request_id})
         if result and result.get('status') == 'completed':
             return jsonify({'status': 'completed'})
         else:
@@ -421,7 +413,6 @@ def check_barrier_status():
     except Exception as e:
         print(f"Error checking barrier status: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
-
 
 @app.route('/notify', methods=['POST'])
 def notify():

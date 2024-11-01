@@ -28,54 +28,46 @@ def decode_message(msg):
 
 def handle_barrier_message(client, msg, data):
     topic_parts = msg.topic.split('/')
-    barrier_id = topic_parts[1]  # Extract barrier_id from the topic
+    # Topic structure: IoTAQStation/Zones/{zone_name}}/Barriers/{barrier_id}
+    barrier_id = topic_parts[4]  # Extract 'barrier_id'
+    zone = topic_parts[2]        # Extract 'zone_name' if needed
 
     # Verify the message type and id_req
     if data.get("type") == "status" and "id_req" in data:
-        action = data.get("data")  # Action received from the barrier (e.g., "open" or "close")
+        action = data.get("data")  # 'open' or 'close'
         id_req_str = data.get("id_req")
 
         try:
-            # Convert id_req to Binary format for querying in MongoDB
-            id_req_binary = Binary.from_uuid(uuid.UUID(id_req_str))
-
             # Look up the original request in MongoDB
-            result = requests_collection.find_one({'id_request': id_req_binary})
+            result = requests_collection.find_one({'id_request': id_req_str})
 
             if result:
-                # Update the status of the barrier in MongoDB based on action data
+                # Update barrier status in MongoDB
                 barriers_collection.update_one(
                     {'barrier_id': barrier_id},
                     {'$set': {'status': action == 'open'}}
                 )
                 print(f"Barrier {barrier_id} status updated to {action}")
 
-                # Update the original request document to mark as completed with an outcome
-                outcome = 'success' if action in ['open', 'close'] else 'failed'
+                # Update the request status to 'completed'
                 requests_collection.update_one(
-                    {'id_request': id_req_binary},
+                    {'id_request': id_req_str},
                     {'$set': {
                         'status': 'completed',
-                        'outcome': outcome,  # Set outcome based on action
-                        'response_time': datetime.datetime.now()
+                        'outcome': 'success',
+                        'response_time': datetime.now()
                     }}
                 )
 
-                # Publish a response message to confirm the action
-                response_message = json.dumps({
-                    'status': 200,
-                    'action': action,
-                    'message': f'Barrier {barrier_id} successfully updated to {action}'
-                })
-                client.publish(f"BARRIERS/{barrier_id}/STATUS", response_message)
-                print(f"Response published to BARRIERS/{barrier_id}/STATUS")
+                # Optionally publish a response message or perform additional actions
+
             else:
                 print(f"No matching request found for id_req {id_req_str}.")
 
         except Exception as e:
-            # Mark the outcome as failed in case of an error
+            # Handle exceptions and update request outcome
             requests_collection.update_one(
-                {'id_request': id_req_binary},
+                {'id_request': id_req_str},
                 {'$set': {'outcome': 'failed'}}
             )
             print(f"Error handling barrier status update: {e}")
@@ -90,6 +82,9 @@ def create_s2_cell(lat, lng, level=19):
 
 
 def handle_sensor_message(client, msg, data):
+    if data.get('type') == 'status':
+        print("Received barrier status message in handle_sensor_message, ignoring.")
+        return
     topic_parts = msg.topic.split('/')
     zone = topic_parts[1]  # Extract zone from the topic
 
@@ -100,7 +95,6 @@ def handle_sensor_message(client, msg, data):
     zone = data.get('Zone')
     humidity = data.get('Humidity')
     aqm = data.get('AQM')
-    ## ADD TIME
 
     sensors_data = {
         'Temperature': temperature,

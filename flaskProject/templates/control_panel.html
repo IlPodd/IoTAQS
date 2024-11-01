@@ -101,10 +101,10 @@ function pollBarrierStatus(requestId, barrierId, action) {
         fetch(`/check_barrier_status?request_id=${requestId}`)
             .then(response => response.json())
             .then(statusData => {
-                if (statusData.status === "completed") {
-                    // Update the UI only if action is confirmed
-                    document.getElementById(`status-${barrierId}`).innerText = action === 'open' ? 'Open' : 'Closed';
-                    clearInterval(intervalId); // Stop polling
+            if (statusData.status === "completed") {
+                // Update the UI only if action is confirmed
+                document.getElementById(`status-${barrierId}`).innerText = action === 'open' ? 'Open' : 'Closed';
+                clearInterval(intervalId); // Stop polling
                 } else if (attempts >= maxAttempts) {
                     alert('Barrier control failed to confirm.');
                     clearInterval(intervalId); // Stop polling after max attempts
