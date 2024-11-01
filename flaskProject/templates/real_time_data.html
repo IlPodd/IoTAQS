@@ -2,15 +2,32 @@
 
 {% block content %}
 
+
+
+<style>
+    th {
+        cursor: pointer;
+    }
+    th.active {
+        text-decoration: underline;
+        font-weight: bold;
+    }
+    th span.sort-indicator {
+        display: inline-block;
+        margin-left: 5px;
+    }
+</style>
+
+    <button onclick="downloadJSON()">Download JSON</button>
 <table>
     <thead>
         <tr>
-            <th onclick="sortTable('zone')">Zone</th>
-            <th onclick="sortTable('AQM')">Air Quality Index (in ppm)</th>
-            <th onclick="sortTable('Temperature')">Temperature</th>
-            <th onclick="sortTable('Humidity')">Humidity</th>
-            <th onclick="sortTable('status')">Status</th>
-            <th onclick="sortTable('time')">Last Update</th>
+            <th onclick="sortTable('zone')">Zone <span id="zone-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('AQM')">Air Quality Index (in ppm) <span id="AQM-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('Temperature')">Temperature <span id="Temperature-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('Humidity')">Humidity <span id="Humidity-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('status')">Status <span id="status-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('time')">Last Update <span id="time-sort-indicator" class="sort-indicator"></span></th>
         </tr>
     </thead>
     <tbody id="table-body">
@@ -30,7 +47,7 @@
                         N/A
                     {% endif %}
                 </td>
-                <td>{{ zone.get("time") if zone.time else 'N/A' }}</td>
+                <td>{{ zone.time if zone.time else 'N/A' }}</td>
             </tr>
             {% endfor %}
         {% else %}
@@ -42,17 +59,28 @@
 </table>
 
 <script>
-    let currentSortField = 'zone';
+    let currentSortField = 'AQM';
     let currentSortOrder = 1; // 1 for ascending, -1 for descending
 
     function sortTable(field) {
-        // Toggle sort order if the same field is clicked
+        // Toggle the sort order if the same field is clicked; otherwise, reset to ascending
         if (currentSortField === field) {
             currentSortOrder = -currentSortOrder;
         } else {
             currentSortField = field;
             currentSortOrder = 1;
         }
+
+        // Clear all sort indicators and active classes
+        document.querySelectorAll("th").forEach(th => {
+            th.classList.remove("active");
+            th.querySelector(".sort-indicator").textContent = '';
+        });
+
+        // Set the active class and sort indicator for the current field
+        const indicator = document.getElementById(`${field}-sort-indicator`);
+        document.querySelector(`th[onclick="sortTable('${field}')"]`).classList.add("active");
+        indicator.textContent = currentSortOrder === 1 ? '▲' : '▼';
 
         // Send AJAX request to fetch sorted data
         fetch(`/RealTime?sort_field=${currentSortField}&sort_order=${currentSortOrder}`, {
@@ -82,6 +110,29 @@
             });
         })
         .catch(error => console.error('Error fetching sorted data:', error));
+    }
+
+        // Download JSON data when the button is clicked
+    function downloadJSON() {
+        fetch('/RealTime/download')
+            .then(response => response.json())
+            .then(data => {
+                const dataStr = JSON.stringify(data, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+
+                // Create a link element, set it to download the JSON, and trigger the click
+                const downloadLink = document.createElement("a");
+                downloadLink.href = url;
+                downloadLink.download = "real_time_data.json";
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+
+                // Clean up the URL object
+                URL.revokeObjectURL(url);
+            })
+            .catch(error => console.error('Error downloading JSON:', error));
     }
 </script>
 

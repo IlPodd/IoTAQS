@@ -3,7 +3,7 @@
 {% block content %}
 
 <h1>Zone History</h1>
-
+<button onclick="downloadHistoryJSON()">Download JSON</button>
 <form method="get" action="{{ url_for('zone_history') }}">
     <label for="limit">Number of entries to display:</label>
     <input type="number" id="limit" name="limit" min="1" max="100" value="{{ limit }}">
@@ -141,50 +141,71 @@
 <p>Showing page {{ page }} of {{ total_pages }} (Total entries: {{ total_entries }})</p>
 
 <script>
-    function sortTable(n) {
-        const table = document.querySelector("table");
-        let rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
-        switching = true;
-        dir = "asc";
+function sortTable(n) {
+    const table = document.querySelector("table");
+    let rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+    switching = true;
+    dir = "asc";
 
-        while (switching) {
-            switching = false;
-            rows = table.rows;
+    while (switching) {
+        switching = false;
+        rows = table.rows;
 
-            for (i = 1; i < (rows.length - 1); i++) {
-                shouldSwitch = false;
-                x = rows[i].getElementsByTagName("TD")[n];
-                y = rows[i + 1].getElementsByTagName("TD")[n];
+        for (i = 1; i < (rows.length - 1); i++) {
+            shouldSwitch = false;
+            x = rows[i].getElementsByTagName("TD")[n];
+            y = rows[i + 1].getElementsByTagName("TD")[n];
 
-                if (dir == "asc") {
-                    if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
-                        shouldSwitch = true;
-                        break;
-                    }
-                } else if (dir == "desc") {
-                    if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
-                        shouldSwitch = true;
-                        break;
-                    }
+            if (dir == "asc") {
+                if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
+                    shouldSwitch = true;
+                    break;
                 }
-            }
-            if (shouldSwitch) {
-                rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-                switching = true;
-                switchcount++;
-            } else {
-                if (switchcount == 0 && dir == "asc") {
-                    dir = "desc";
-                    switching = true;
+            } else if (dir == "desc") {
+                if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
+                    shouldSwitch = true;
+                    break;
                 }
             }
         }
-
-        // Remove existing sorting classes
-        document.querySelectorAll("th").forEach(th => th.classList.remove("asc", "desc"));
-        // Add sorting class to the clicked column header
-        table.querySelectorAll("th")[n].classList.add(dir);
+        if (shouldSwitch) {
+            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+            switching = true;
+            switchcount++;
+        } else {
+            if (switchcount == 0 && dir == "asc") {
+                dir = "desc";
+                switching = true;
+            }
+        }
     }
+
+    // Remove existing sorting classes
+    document.querySelectorAll("th").forEach(th => th.classList.remove("asc", "desc"));
+    // Add sorting class to the clicked column header
+    table.querySelectorAll("th")[n].classList.add(dir);
+}
+
+
+function downloadHistoryJSON() {
+    fetch('/History/download')
+        .then(response => response.json())
+        .then(data => {
+            const dataStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+
+            const downloadLink = document.createElement("a");
+            downloadLink.href = url;
+            downloadLink.download = "zone_history_data.json";
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+
+            URL.revokeObjectURL(url);
+        })
+        .catch(error => console.error('Error downloading JSON:', error));
+}
 </script>
 
 {% endblock %}

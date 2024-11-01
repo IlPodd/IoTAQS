@@ -56,7 +56,7 @@
                 </td>
                 <td>{{ zone.get('time', 'N/A') }}</td>
                 <td>{{ zone.get('DEVICE_ID', 'N/A') }}</td>
-                <td id="status-zone-{{ zone.zone }}">{{ 'Open' if zone.get('status', False) else 'Closed' }}</td>
+                <td id="status-zone-{{ zone.zone }}">{{ 'Open' if zone.get('status', True) else 'Closed' }}</td>
             </tr>
             {% endfor %}
         {% else %}
