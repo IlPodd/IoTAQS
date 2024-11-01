@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div id="map"></div>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+    </style>
+
+    <script>
+        // Initialize the map and set its view to the first location
+        const map = L.map('map').setView([39.228440, 9.109700], 16);
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // Define the geo-zones data
+        const geoZones = [
+            { position: [39.228272, 9.109862], halfWidth: 0.00044, name: "Parchetto" },
+            { position: [39.229247, 9.109036], halfWidth: 0.00052, name: "Segreteria" },
+            { position: [39.230172, 9.108120], halfWidth: 0.00040, name: "Biblioteca" },
+            { position: [39.230572, 9.106862], halfWidth: 0.00056, name: "Sterrato" },
+            { position: [39.234946, 9.102363], halfWidth: 0.00050, name: "Casa" }
+        ];
+
+        // Function to convert meters to degrees for latitude and longitude
+        function metersToDegrees(lat, meters) {
+            const latDegrees = meters / 111320; // Convert meters to degrees latitude
+            const lonDegrees = meters / (111320 * Math.cos(lat * Math.PI / 180)); // Convert meters to degrees longitude
+            return { latDegrees, lonDegrees };
+        }
+
+        // Add markers and squares for each zone
+        geoZones.forEach(zone => {
+            const [lat, lon] = zone.position;
+            const halfWidthMeters = zone.halfWidth * 111320; // Convert half-width to meters
+
+            // Convert half-width from meters to degrees for both latitude and longitude
+            const { latDegrees, lonDegrees } = metersToDegrees(lat, halfWidthMeters);
+
+            // Define the square vertices based on the center and half-width in degrees
+            const squareCoords = [
+                [lat + latDegrees, lon + lonDegrees],
+                [lat + latDegrees, lon - lonDegrees],
+                [lat - latDegrees, lon - lonDegrees],
+                [lat - latDegrees, lon + lonDegrees]
+            ];
+
+            // Prepare the popup content
+            let popupContent = `<b>${zone.name}</b><br>`;
+            popupContent += `Latitude: ${lat}<br>`;
+            popupContent += `Longitude: ${lon}<br>`;
+
+            // Add a marker at the center of the zone
+            L.marker([lat, lon]).addTo(map)
+                .bindPopup(popupContent);
+
+            // Draw the square around the zone
+            L.polygon(squareCoords, {
+                color: 'blue',
+                fillColor: '#30a0ff',
+                fillOpacity: 0.2
+            }).addTo(map).bindPopup(popupContent);
+        });
+    </script>
+{% endblock %}
