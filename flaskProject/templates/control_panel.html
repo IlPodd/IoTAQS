@@ -33,7 +33,8 @@
     <thead>
         <tr>
             <th>Zone</th>
-            <th>Air Quality Index (in ppm)</th>
+            <th>CO₂ Reading (ppm)</th>
+            <th>Air Quality Index (AQM)</th>
             <th>Action Suggested</th>
             <th>Last Update</th>
             <th>Last Update Device</th>
@@ -45,15 +46,9 @@
             {% for zone in zones %}
             <tr>
                 <td>{{ zone.zone or 'N/A' }}</td>
-                <td class="aqm-value">{{ zone.sensors.get("AQM", 'N/A') }}</td>
-                <td>
-                    {% set aqm_value = zone.sensors.get("AQM") %}
-                    {% if aqm_value is not none %}
-                        {{ 'Close' if aqm_value | float > 3 else 'None' }}
-                    {% else %}
-                        {{ 'N/A' }}
-                    {% endif %}
-                </td>
+                <td class="co2-value">{{ zone.sensors.get("AQM", 'N/A') }}</td>
+                <td class="aqm-value">N/A</td>
+                <td class="action-suggested">N/A</td>
                 <td>{{ zone.get('time', 'N/A') }}</td>
                 <td>{{ zone.get('DEVICE_ID', 'N/A') }}</td>
                 <td id="status-zone-{{ zone.zone }}">{{ 'Open' if zone.get('status', True) else 'Closed' }}</td>
@@ -61,102 +56,96 @@
             {% endfor %}
         {% else %}
             <tr>
-                <td colspan="6">No entries found.</td>
+                <td colspan="7">No entries found.</td>
             </tr>
         {% endif %}
     </tbody>
 </table>
 
 <script>
-function controlBarrier(barrierId, action, zone) {
-    fetch('/control_barrier', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            barrier_id: barrierId,
-            action: action,
-            zone: zone
+    // Define the legal limit for CO2 in ppm
+    const LEGAL_LIMIT_CO2_UGM3 = 9.82;  // Legal limit of CO2 in ppm
+
+    // Function to calculate AQM and update the table
+    function calculateAQM() {
+        const co2Elements = document.querySelectorAll('.co2-value');
+        co2Elements.forEach((element) => {
+            const co2Value = parseFloat(element.innerText);
+
+            if (!isNaN(co2Value)) {
+                // Calculate AQM
+const aqm = (co2Value * 1.964 / LEGAL_LIMIT_CO2_UGM3) * 100;
+                // Update AQM value in the table
+                const aqmElement = element.parentElement.querySelector('.aqm-value');
+                aqmElement.innerText = aqm.toFixed(2);
+
+                // Update Action Suggested based on AQM
+                const actionSuggestedElement = element.parentElement.querySelector('.action-suggested');
+                actionSuggestedElement.innerText = aqm > 100 ? 'Close' : 'None';
+            }
+        });
+    }
+
+    // Function to control the barrier
+    function controlBarrier(barrierId, action, zone) {
+        fetch('/control_barrier', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                barrier_id: barrierId,
+                action: action,
+                zone: zone
+            })
         })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === "success") {
-            const requestId = data.request_id;
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === "success") {
+                const requestId = data.request_id;
 
-            // Poll for confirmation of the barrier action
-            pollBarrierStatus(requestId, barrierId, action, zone);
-        } else {
-            alert('Failed to control barrier: ' + data.message);
-        }
-    })
-    .catch(error => console.error('Error:', error));
-}
+                // Poll for confirmation of the barrier action
+                pollBarrierStatus(requestId, barrierId, action, zone);
+            } else {
+                alert('Failed to control barrier: ' + data.message);
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
 
-function pollBarrierStatus(requestId, barrierId, action, zone) {
-    const pollInterval = 1000; // 1 second interval
-    const maxAttempts = 10;
-    let attempts = 0;
+    // Function to poll for barrier status update
+    function pollBarrierStatus(requestId, barrierId, action, zone) {
+        const pollInterval = 1000; // 1 second interval
+        const maxAttempts = 10;
+        let attempts = 0;
 
-    const intervalId = setInterval(() => {
-        fetch(`/check_barrier_status?request_id=${requestId}`)
-            .then(response => response.json())
-            .then(statusData => {
-                if (statusData.status === "completed") {
-                    // Updates the table only if the transaction has been fulfilled
-                    document.getElementById(`status-barrier-${barrierId}`).innerText = action === 'open' ? 'Open' : 'Closed';
-                    const zoneStatusElement = document.getElementById(`status-zone-${zone}`);
-                    if (zoneStatusElement) {
-                        zoneStatusElement.innerText = action === 'open' ? 'Open' : 'Closed';
+        const intervalId = setInterval(() => {
+            fetch(`/check_barrier_status?request_id=${requestId}`)
+                .then(response => response.json())
+                .then(statusData => {
+                    if (statusData.status === "completed") {
+                        // Updates the table only if the transaction has been fulfilled
+                        document.getElementById(`status-barrier-${barrierId}`).innerText = action === 'open' ? 'Open' : 'Closed';
+                        const zoneStatusElement = document.getElementById(`status-zone-${zone}`);
+                        if (zoneStatusElement) {
+                            zoneStatusElement.innerText = action === 'open' ? 'Open' : 'Closed';
+                        }
+                        clearInterval(intervalId); // Stop polling
+                    } else if (attempts >= maxAttempts) {
+                        alert('Barrier control failed to confirm.');
+                        clearInterval(intervalId); // Stop polling after max attempts
                     }
-                    clearInterval(intervalId); // Stop polling
-                } else if (attempts >= maxAttempts) {
-                    alert('Barrier control failed to confirm.');
-                    clearInterval(intervalId); // Stop polling after max attempts and prepares to raise an error
-                }
-                attempts++;
-            })
-            .catch(error => {
-                console.error('Error checking barrier status:', error);
-                clearInterval(intervalId); // Stop polling on error
-            });
-    }, pollInterval);
-}
-
-// Set the AQM threshold for alert and the enterprise to notify
-const AQM_THRESHOLD = 3;
-const enterpriseNotificationURL = "/notify"; // Mock endpoint on the server can be changed to vigilidelfuoco.it/municipalità
-
-// Function to check visible AQM values and prompt an alert if needed
-function checkVisibleAQMValues() {
-    const aqmValues = document.querySelectorAll('.aqm-value');
-
-    aqmValues.forEach((element) => {
-        const aqmValue = parseFloat(element.innerText);
-
-        if (!isNaN(aqmValue) && aqmValue > AQM_THRESHOLD) {
-            alert(`Warning: Air Quality Index in a visible zone exceeds the safe limit (${aqmValue} ppm). Action recommended: Close barrier. Public entities have been warned`);
-
-            fetch(enterpriseNotificationURL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: `Air Quality Index exceeds threshold: ${aqmValue} ppm`,
-                    zone: element.closest('tr').querySelector('td').innerText
+                    attempts++;
                 })
-            })
-            .then(response => response.json())
-            .then(data => console.log('Enterprise notified:', data))
-            .catch(error => console.error('Error notifying enterprise:', error));
-        }
-    });
-}
+                .catch(error => {
+                    console.error('Error checking barrier status:', error);
+                    clearInterval(intervalId); // Stop polling on error
+                });
+        }, pollInterval);
+    }
 
-// Run the function on page load to check only displayed entries
-document.addEventListener('DOMContentLoaded', checkVisibleAQMValues);
+    // Run the AQM calculation function on page load to calculate AQM for each zone
+    document.addEventListener('DOMContentLoaded', calculateAQM);
 </script>
 
 {% endblock %}

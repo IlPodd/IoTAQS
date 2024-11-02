@@ -12,7 +12,7 @@
     <input type="hidden" name="sort_field" value="{{ sort_field }}">
     <input type="hidden" name="sort_direction" value="{{ sort_direction }}">
 </form>
-    <style>
+<style>
     th a {
         color: inherit;
         text-decoration: none;
@@ -38,8 +38,13 @@
                 </a>
             </th>
             <th>
+                <a href="{{ url_for('zone_history', sort_field='CO2', sort_direction='asc' if sort_field != 'CO2' or sort_direction == 'desc' else 'desc', limit=limit, page=1) }}">
+                    CO₂ Reading (ppm) {% if sort_field == 'CO2' %}<span class="{{ sort_direction }}"></span>{% endif %}
+                </a>
+            </th>
+            <th>
                 <a href="{{ url_for('zone_history', sort_field='AQM', sort_direction='asc' if sort_field != 'AQM' or sort_direction == 'desc' else 'desc', limit=limit, page=1) }}">
-                    Air Quality Index (in ppm){% if sort_field == 'AQM' %}<span class="{{ sort_direction }}"></span>{% endif %}
+                    Air Quality Index (AQM) {% if sort_field == 'AQM' %}<span class="{{ sort_direction }}"></span>{% endif %}
                 </a>
             </th>
             <th>
@@ -64,7 +69,8 @@
             {% for zone in zones %}
             <tr>
                 <td>{{ zone.zone }}</td>
-                <td>{{ zone.sensors.AQM }}</td>
+                <td class="co2-value">{{ zone.sensors.get('AQM', 'N/A') }}</td>
+                <td class="aqm-value">N/A</td>
                 <td>{{ zone.time }}</td>
                 <td>{{ zone.sensors.Temperature }}</td>
                 <td>{{ zone.sensors.Humidity }}</td>
@@ -72,14 +78,13 @@
             {% endfor %}
         {% else %}
             <tr>
-                <td colspan="5">No entries found.</td>
+                <td colspan="6">No entries found.</td>
             </tr>
         {% endif %}
     </tbody>
 </table>
 
-
- <!-- Pagination Controls -->
+<!-- Pagination Controls -->
 <div class="pagination">
     {% if page > 1 %}
         <a href="{{ url_for('zone_history', page=1, limit=limit, sort_field=sort_field, sort_direction=sort_direction) }}">&laquo; First</a>
@@ -130,7 +135,7 @@
     {% endif %}
 
     {% if page < total_pages %}
-        <a href="{{ url_for('zone_history', page=page+1, limit=limit, sort_field=sort_field, sort_direction=sort_direction) }}">Next</a>
+        <a href="{{ url_for('zone_history', page=page+1, limit=limit, sort_field=sort_field, sort_direction=sort_direction)}}">Next</a>
         <a href="{{ url_for('zone_history', page=total_pages, limit=limit, sort_field=sort_field, sort_direction=sort_direction) }}">Last &raquo;</a>
     {% else %}
         <span class="disabled">Next</span>
@@ -141,71 +146,49 @@
 <p>Showing page {{ page }} of {{ total_pages }} (Total entries: {{ total_entries }})</p>
 
 <script>
-function sortTable(n) {
-    const table = document.querySelector("table");
-    let rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
-    switching = true;
-    dir = "asc";
+    // Define the legal limit for CO2 in ug/m3
+    const LEGAL_LIMIT_CO2_UGM3 = 9.82;  // Legal limit of CO2 in ppm
 
-    while (switching) {
-        switching = false;
-        rows = table.rows;
+    // Function to calculate AQM and update the table
+    function calculateAQM() {
+        const co2Elements = document.querySelectorAll('.co2-value');
+        co2Elements.forEach((element) => {
+            const co2Value = parseFloat(element.innerText);
 
-        for (i = 1; i < (rows.length - 1); i++) {
-            shouldSwitch = false;
-            x = rows[i].getElementsByTagName("TD")[n];
-            y = rows[i + 1].getElementsByTagName("TD")[n];
+            if (!isNaN(co2Value)) {
 
-            if (dir == "asc") {
-                if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
-                    shouldSwitch = true;
-                    break;
-                }
-            } else if (dir == "desc") {
-                if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
-                    shouldSwitch = true;
-                    break;
-                }
+                // Calculate AQM
+                const aqm = (co2Value * 1.964  / LEGAL_LIMIT_CO2_UGM3) * 100;
+
+                // Update AQM value in the table
+                const aqmElement = element.parentElement.querySelector('.aqm-value');
+                aqmElement.innerText = aqm.toFixed(2);
             }
-        }
-        if (shouldSwitch) {
-            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-            switching = true;
-            switchcount++;
-        } else {
-            if (switchcount == 0 && dir == "asc") {
-                dir = "desc";
-                switching = true;
-            }
-        }
+        });
     }
 
-    // Remove existing sorting classes
-    document.querySelectorAll("th").forEach(th => th.classList.remove("asc", "desc"));
-    // Add sorting class to the clicked column header
-    table.querySelectorAll("th")[n].classList.add(dir);
-}
+    // Run the AQM calculation function on page load to calculate AQM for each zone
+    document.addEventListener('DOMContentLoaded', calculateAQM);
 
+    function downloadHistoryJSON() {
+        fetch('/History/download')
+            .then(response => response.json())
+            .then(data => {
+                const dataStr = JSON.stringify(data, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
 
-function downloadHistoryJSON() {
-    fetch('/History/download')
-        .then(response => response.json())
-        .then(data => {
-            const dataStr = JSON.stringify(data, null, 2);
-            const blob = new Blob([dataStr], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
+                const downloadLink = document.createElement("a");
+                downloadLink.href = url;
+                downloadLink.download = "zone_history_data.json";
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
 
-            const downloadLink = document.createElement("a");
-            downloadLink.href = url;
-            downloadLink.download = "zone_history_data.json";
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
-
-            URL.revokeObjectURL(url);
-        })
-        .catch(error => console.error('Error downloading JSON:', error));
-}
+                URL.revokeObjectURL(url);
+            })
+            .catch(error => console.error('Error downloading JSON:', error));
+    }
 </script>
 
 {% endblock %}

@@ -13,7 +13,7 @@ from pymongo import MongoClient
 from utils.utils import handle_sensor_message, handle_barrier_message, decode_message, transform_geo_zone
 
 from parameters.Database_parameters import db_name, db_host, db_port
-from parameters.Zone_JSON import geo_zones_json
+from parameters.Zone_JSON import geo_zones
 from parameters.MQTT_parameters import *
 
 from classes.CZone import Zone
@@ -44,7 +44,7 @@ def on_message(client, userdata, msg):
 
     # Prevent a loop from response messages
     if message_content.startswith("RESPONSE:"):
-        print(f"Response received -> {msg.topic}: {message_content}")
+        #print(f"Response received -> {msg.topic}: {message_content}") #for debugging
         return
 
     try:
@@ -118,10 +118,9 @@ def home():
 
 @app.route('/GetZones', methods=['GET'])
 def send_zones():
-    return transform_geo_zone(geo_zones_json)
+    return geo_zones
 
-
-"""----------------History Page"""
+"""----------------History Page-------"""
 
 
 @app.route('/History', methods=['GET'])
@@ -132,8 +131,8 @@ def zone_history():
     sort_field = request.args.get('sort_field', default='zone')
     sort_direction = request.args.get('sort_direction', default='asc')
 
-    # Define limits for showing tables
-    limit = max(1, min(limit, 100))  # Limit between 1 and 100
+    # Define limits for the tables
+    limit = max(1, min(limit, 100))
     total_entries = zone_collection.count_documents({})
     total_pages = max(1, math.ceil(total_entries / limit))
     page = max(1, min(page, total_pages))
@@ -196,12 +195,11 @@ def zone_history():
 def download_zone_history():
     try:
         # Fetch all historical data, with optional sorting and pagination logic if required
-        zones_cursor = zone_collection.find().sort("time", -1)  # Adjust sorting as needed
+        zones_cursor = zone_collection.find().sort("time", -1)
         zones = list(zones_cursor)
 
-        # Process data (similar to the processing done in `zone_history`)
+        # Process data
         for zone in zones:
-            # Convert ObjectId to string and format fields as needed
             zone['_id'] = str(zone.get('_id', ''))
             zone['zone'] = zone.get('zone', 'N/A')
             sensors = zone.get('sensors', {})
@@ -237,7 +235,6 @@ def visualize_zones():
 
 @app.route('/RealTime', methods=['GET'])
 def real_time():
-    # Get sorting parameters from the query string
     sort_field = request.args.get('sort_field', 'zone')
     sort_order = int(request.args.get('sort_order', 1))  # 1 for ascending, -1 for descending
 
@@ -278,7 +275,6 @@ def real_time():
         for zone in zones:
             zone['status'] = status_map.get(zone['zone'], 'N/A')
 
-        # Sort the zones based on the selected field and handle nested fields
         def get_nested_field(data, field_path):
             fields = field_path.split('.')
             for field in fields:
@@ -327,11 +323,9 @@ def download_real_time_data():
         zones_cursor = zone_collection.aggregate(pipeline)
         zones = list(zones_cursor)
 
-        # Fetch statuses from 'barriers' collection and create a mapping
         barriers_cursor = barriers_collection.find({}, {'zone': 1, 'status': 1})
         status_map = {barrier['zone']: barrier['status'] for barrier in barriers_cursor}
 
-        # Attach 'status' to each zone entry
         for zone in zones:
             zone['status'] = status_map.get(zone['zone'], 'N/A')
 
@@ -380,14 +374,13 @@ def control_panel():
         barriers_cursor = barriers_collection.find()
         barriers = list(barriers_cursor)
 
-        # Aggregation pipeline to get the most recent entry per zone
         pipeline = [
             {
                 '$sort': {'time': -1}  # Sort by 'time' in descending order
             },
             {
                 '$group': {
-                    '_id': '$zone',  # Group by 'zone'
+                    '_id': '$zone',
                     'zone': {'$first': '$zone'},
                     'time': {'$first': '$time'},
                     'sensors': {'$first': '$sensors'},
@@ -431,15 +424,14 @@ def control_barrier():
     client.publish(topic_barrier_control, payload)
     print(f"Published to MQTT topic {topic_barrier_control} with payload {payload}")
 
-    # Insert a new document in MongoDB to track the request with outcome pending
     insert_request = {
         'id_request': id_str,
         'barrier_id': barrier_id,
         'type': 'command',
         'data': action,
         'time': time,
-        'status': 'pending',
-        'outcome': 'pending'
+        'status': 'failed',
+        'outcome': 'failed'
     }
 
     try:
@@ -460,8 +452,11 @@ def check_barrier_status():
         result = requests_collection.find_one({'id_request': request_id})
         if result and result.get('status') == 'completed':
             return jsonify({'status': 'completed'})
+        elif result and result.get('status') == 'failed':
+            return jsonify({'status': 'failed'})
         else:
-            return jsonify({'status': 'pending'})
+            return jsonify({'status': 'failed'})
+
     except Exception as e:
         print(f"Error checking barrier status: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
