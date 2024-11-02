@@ -2,15 +2,31 @@
 
 {% block content %}
 
+<style>
+    th {
+        cursor: pointer;
+    }
+    th.active {
+        text-decoration: underline;
+        font-weight: bold;
+    }
+    th span.sort-indicator {
+        display: inline-block;
+        margin-left: 5px;
+    }
+</style>
+
+<button onclick="downloadJSON()">Download JSON</button>
 <table>
     <thead>
         <tr>
-            <th onclick="sortTable('zone')">Zone</th>
-            <th onclick="sortTable('AQM')">Air Quality Index (in ppm)</th>
-            <th onclick="sortTable('Temperature')">Temperature</th>
-            <th onclick="sortTable('Humidity')">Humidity</th>
-            <th onclick="sortTable('status')">Status</th>
-            <th onclick="sortTable('time')">Last Update</th>
+            <th onclick="sortTable('zone')">Zone <span id="zone-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('CO2')">CO₂ Reading (ppm) <span id="CO2-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('AQM')">Air Quality Index (AQM) <span id="AQM-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('Temperature')">Temperature <span id="Temperature-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('Humidity')">Humidity <span id="Humidity-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('status')">Status <span id="status-sort-indicator" class="sort-indicator"></span></th>
+            <th onclick="sortTable('time')">Last Update <span id="time-sort-indicator" class="sort-indicator"></span></th>
         </tr>
     </thead>
     <tbody id="table-body">
@@ -18,7 +34,8 @@
             {% for zone in zones %}
             <tr>
                 <td>{{ zone.zone or 'N/A' }}</td>
-                <td>{{ zone.sensors.get("AQM", 'N/A') }}</td>
+                <td class="co2-value">{{ zone.sensors.get("AQM", 'N/A') }}</td>
+                <td class="aqm-value">N/A</td>
                 <td>{{ zone.sensors.get("Temperature", 'N/A') }}</td>
                 <td>{{ zone.sensors.get("Humidity", 'N/A') }}</td>
                 <td>
@@ -30,29 +47,62 @@
                         N/A
                     {% endif %}
                 </td>
-                <td>{{ zone.get("time") if zone.time else 'N/A' }}</td>
+                <td>{{ zone.time if zone.time else 'N/A' }}</td>
             </tr>
             {% endfor %}
         {% else %}
             <tr>
-                <td colspan="6">No entries found.</td>
+                <td colspan="7">No entries found.</td>
             </tr>
         {% endif %}
     </tbody>
 </table>
 
 <script>
-    let currentSortField = 'zone';
+    const LEGAL_LIMIT_CO2_UGM3 = 9.82;  // Legal limit of CO2 in g/m3
+    function calculateAQM() {
+        const co2Elements = document.querySelectorAll('.co2-value');
+        co2Elements.forEach((element) => {
+            const co2Value = parseFloat(element.innerText);
+
+            if (!isNaN(co2Value)) {
+                // Calculate AQM
+                const aqm = (co2Value * 1.964 / LEGAL_LIMIT_CO2_UGM3) * 100;
+                // Update AQM value in the table
+                const aqmElement = element.parentElement.querySelector('.aqm-value');
+                aqmElement.innerText = aqm.toFixed(2);
+
+                // Update Action Suggested based on AQM (if applicable)
+                const actionSuggestedElement = element.parentElement.querySelector('.action-suggested');
+                if (actionSuggestedElement) {
+                    actionSuggestedElement.innerText = aqm > 100 ? 'Close' : 'None';
+                }
+            }
+        });
+    }
+
+    let currentSortField = 'AQM';
     let currentSortOrder = 1; // 1 for ascending, -1 for descending
 
     function sortTable(field) {
-        // Toggle sort order if the same field is clicked
+        // Toggle the sort order if the same field is clicked; otherwise, reset to ascending
         if (currentSortField === field) {
             currentSortOrder = -currentSortOrder;
         } else {
             currentSortField = field;
             currentSortOrder = 1;
         }
+
+        // Clear all sort indicators and active classes
+        document.querySelectorAll("th").forEach(th => {
+            th.classList.remove("active");
+            th.querySelector(".sort-indicator").textContent = '';
+        });
+
+        // Set the active class and sort indicator for the current field
+        const indicator = document.getElementById(`${field}-sort-indicator`);
+        document.querySelector(`th[onclick="sortTable('${field}')"]`).classList.add("active");
+        indicator.textContent = currentSortOrder === 1 ? '▲' : '▼';
 
         // Send AJAX request to fetch sorted data
         fetch(`/RealTime?sort_field=${currentSortField}&sort_order=${currentSortOrder}`, {
@@ -68,7 +118,8 @@
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${zone.zone || 'N/A'}</td>
-                    <td>${zone.sensors?.AQM || 'N/A'}</td>
+                    <td class="co2-value">${zone.sensors?.AQM || 'N/A'}</td>
+                    <td class="aqm-value">N/A</td>
                     <td>${zone.sensors?.Temperature || 'N/A'}</td>
                     <td>${zone.sensors?.Humidity || 'N/A'}</td>
                     <td>${
@@ -80,8 +131,34 @@
                 `;
                 tableBody.appendChild(row);
             });
+
+            // Recalculate AQM after new data is fetched and rendered
+            calculateAQM();
         })
         .catch(error => console.error('Error fetching sorted data:', error));
+    }
+    document.addEventListener('DOMContentLoaded', calculateAQM);
+
+    // Download JSON data when the button is clicked
+    function downloadJSON() {
+        fetch('/RealTime/download')
+            .then(response => response.json())
+            .then(data => {
+                const dataStr = JSON.stringify(data, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+
+                const downloadLink = document.createElement("a");
+                downloadLink.href = url;
+                downloadLink.download = "real_time_data.json";
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+
+                // Clean up the URL object
+                URL.revokeObjectURL(url);
+            })
+            .catch(error => console.error('Error downloading JSON:', error));
     }
 </script>
 

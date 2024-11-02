@@ -3,9 +3,6 @@ import json
 import paho.mqtt.client as mqtt
 from datetime import datetime
 from pymongo import MongoClient
-from s2sphere import LatLng, CellId, Cell
-import uuid
-from bson import Binary
 
 client = mqtt.Client()
 db_client = MongoClient('localhost', 27017)
@@ -15,6 +12,7 @@ zone_collection = db['Zone']
 devices_collection = db['devices']
 sensors_collection = db['sensors']
 requests_collection = db['requests']
+
 
 def decode_message(msg):
     try:
@@ -28,9 +26,9 @@ def decode_message(msg):
 
 def handle_barrier_message(client, msg, data):
     topic_parts = msg.topic.split('/')
-    # Topic structure: IoTAQStation/Zones/{zone_name}}/Barriers/{barrier_id}
+    # structure: IoTAQStation/Zones/{zone_name}}/Barriers/{barrier_id}
     barrier_id = topic_parts[4]  # Extract 'barrier_id'
-    zone = topic_parts[2]        # Extract 'zone_name' if needed
+    zone = topic_parts[2]  # Extract 'zone_name' if needed
 
     # Verify the message type and id_req
     if data.get("type") == "status" and "id_req" in data:
@@ -58,35 +56,35 @@ def handle_barrier_message(client, msg, data):
                         'response_time': datetime.now()
                     }}
                 )
-
-                # Optionally publish a response message or perform additional actions
-
             else:
+                requests_collection.update_one(
+                    {'id_request': id_req_str},
+                    {'$set': {
+                        'status': 'failed',
+                        'outcome': 'failed',
+                        'response_time': datetime.now()
+                    }}
+                )
                 print(f"No matching request found for id_req {id_req_str}.")
 
         except Exception as e:
-            # Handle exceptions and update request outcome
             requests_collection.update_one(
                 {'id_request': id_req_str},
-                {'$set': {'outcome': 'failed'}}
+                {'$set': {'status': 'failed','outcome': 'failed'}}
             )
             print(f"Error handling barrier status update: {e}")
     else:
         print("Unrecognized barrier message format or missing id_req")
 
 
-def create_s2_cell(lat, lng, level=19):
-    latlng = LatLng.from_degrees(lat, lng)
-    cell_id = CellId.from_lat_lng(latlng).parent(level)
-    return cell_id
-
-
 def handle_sensor_message(client, msg, data):
     if data.get('type') == 'status':
         print("Received barrier status message in handle_sensor_message, ignoring.")
         return
+    #Extract data fron the topic
     topic_parts = msg.topic.split('/')
-    zone = topic_parts[1]  # Extract zone from the topic
+    zone = topic_parts[1]
+    device_id = topic_parts[4]
 
     # Extract sensor data
     latitude = data.get('Latitude')
@@ -108,7 +106,8 @@ def handle_sensor_message(client, msg, data):
         'longitude': longitude,
         'zone': zone,
         'sensors': sensors_data,
-        'time': message_time
+        'time': message_time,
+        'DEVICE_ID': device_id
     }
 
     try:
@@ -139,17 +138,10 @@ def send_barrier_command(client, barrier_id, action, pending_commands):
     print(f"Command '{action}' sent to barrier {barrier_id}")
 
 
-
-
-
 def transform_geo_zone(geo_zones_json):
-    # Iterate through each item in geo_zones_json and reformat it
     transformed = [
         [item["p"][0], item["p"][1], item["p"][2], item["n"]]
         for item in geo_zones_json
     ]
-
-    # Convert the transformed list to a JSON-style string
     geo_zones = json.dumps(transformed)
-
     return geo_zones

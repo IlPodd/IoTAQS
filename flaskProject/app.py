@@ -1,24 +1,24 @@
 from flask import Flask, jsonify, request, render_template, redirect, url_for
 from flask_basicauth import BasicAuth
-
+from bson import json_util
 import math
 import paho.mqtt.client as mqtt
 import threading
 import json
-import datetime
+from datetime import datetime
 import uuid
-from bson import Binary
 
 from pymongo import MongoClient
 
-
-from utils.utils import send_mqtt_request, handle_sensor_message, handle_barrier_message, decode_message, transform_geo_zone
+from utils.utils import handle_sensor_message, handle_barrier_message, decode_message, transform_geo_zone
 
 from parameters.Database_parameters import db_name, db_host, db_port
-from parameters.Zone_JSON import geo_zones_json
+from parameters.Zone_JSON import geo_zones
 from parameters.MQTT_parameters import *
 
 from classes.CZone import Zone
+from classes.CRequests import Request
+from classes.CBarrier import Barrier
 
 """-----DataBase-----"""
 client = MongoClient(db_host, db_port)
@@ -44,7 +44,7 @@ def on_message(client, userdata, msg):
 
     # Prevent a loop from response messages
     if message_content.startswith("RESPONSE:"):
-        print(f"Response received -> {msg.topic}: {message_content}")
+        #print(f"Response received -> {msg.topic}: {message_content}") #for debugging
         return
 
     try:
@@ -55,7 +55,7 @@ def on_message(client, userdata, msg):
             print('STARTING BARRIER STATUS HANDLE')
             handle_barrier_message(client, msg, data)
         elif message_type == 'command':
-            pass  #command should not be received by the server
+            pass  # command should not be received by the server
         elif message_type == 'measurement':
             print('STARTING MEASUREMENT HANDLE')
             handle_sensor_message(client, msg, data)
@@ -69,6 +69,7 @@ def on_message(client, userdata, msg):
         print(f"Missing key in JSON data: {e}")
     except Exception as e:
         print(f"Error processing message: {e}")
+
 
 # MQTT client setup
 client = mqtt.Client()
@@ -104,6 +105,7 @@ def create_zone():
     zone = Zone.create_zone(data["zone_id"], data["name"], data["barriers"], data["location"])
     return jsonify(zone.to_dict(), 201)
 
+
 @app.route('/home', methods=['GET'])
 @app.route('/index', methods=['GET'])
 @app.route('/', methods=['GET'])
@@ -111,16 +113,14 @@ def home():
     return render_template('home.html')
 
 
-
 """--------GET ZONE GEODATA PAGE------------"""
 
 
 @app.route('/GetZones', methods=['GET'])
 def send_zones():
-    return transform_geo_zone(geo_zones_json)
+    return geo_zones
 
-
-"""----------------History Page"""
+"""----------------History Page-------"""
 
 
 @app.route('/History', methods=['GET'])
@@ -131,8 +131,8 @@ def zone_history():
     sort_field = request.args.get('sort_field', default='zone')
     sort_direction = request.args.get('sort_direction', default='asc')
 
-    # Define limits for showing tables
-    limit = max(1, min(limit, 100))  # Limit between 1 and 100
+    # Define limits for the tables
+    limit = max(1, min(limit, 100))
     total_entries = zone_collection.count_documents({})
     total_pages = max(1, math.ceil(total_entries / limit))
     page = max(1, min(page, total_pages))
@@ -155,7 +155,6 @@ def zone_history():
     zones_cursor = zone_collection.find().sort(mongo_sort_field, sort_order).skip(skips).limit(limit)
     zones = list(zones_cursor)
 
-
     # Process data
     for zone in zones:
         try:
@@ -173,14 +172,8 @@ def zone_history():
                 'Humidity': sensors.get('Humidity', 'N/A')
             }
 
-            # Handle 'time' field
-            time_value = zone.get('time', 'N/A')
-            if isinstance(time_value):
-                # Format the datetime object
-                formatted_time = time_value.strftime('%Y-%m-%d %H:%M:%S')
-                zone['time'] = formatted_time
-            else:
-                zone['time'] = 'N/A'
+            # Use 'time' field as-is
+            zone['time'] = zone.get('time', 'N/A')
 
         except Exception as e:
             print(f"Error processing zone data: {e}")
@@ -198,6 +191,40 @@ def zone_history():
     )
 
 
+@app.route('/History/download', methods=['GET'])
+def download_zone_history():
+    try:
+        # Fetch all historical data, with optional sorting and pagination logic if required
+        zones_cursor = zone_collection.find().sort("time", -1)
+        zones = list(zones_cursor)
+
+        # Process data
+        for zone in zones:
+            zone['_id'] = str(zone.get('_id', ''))
+            zone['zone'] = zone.get('zone', 'N/A')
+            sensors = zone.get('sensors', {})
+            zone['sensors'] = {
+                'AQM': sensors.get('AQM', 'N/A'),
+                'Temperature': sensors.get('Temperature', 'N/A'),
+                'Humidity': sensors.get('Humidity', 'N/A')
+            }
+            time_value = zone.get('time', 'N/A')
+            if isinstance(time_value, datetime):
+                zone['time'] = time_value.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                zone['time'] = 'N/A'
+
+        # Send data in JSON format
+        return jsonify(zones)
+
+    except Exception as e:
+        print(f"Error fetching history data for download: {e}")
+        return jsonify({"error": "An error occurred while fetching data"}), 500
+
+
+"""------------MAP  WITH ZONES PAGE --------"""
+
+
 @app.route('/Maps', methods=['GET'])
 def visualize_zones():
     return render_template('Maps.html')
@@ -206,14 +233,12 @@ def visualize_zones():
 """---------REAL TIME AIR QUALITY PAGE"""
 
 
-# Route to render real-time data page
 @app.route('/RealTime', methods=['GET'])
 def real_time():
-    # Get the sorting parameters from the query string (default to 'zone' ascending)
     sort_field = request.args.get('sort_field', 'zone')
     sort_order = int(request.args.get('sort_order', 1))  # 1 for ascending, -1 for descending
 
-    # Map sort_field to the correct field in MongoDB
+    # Field mapping for MongoDB
     field_map = {
         'zone': 'zone',
         'AQM': 'sensors.AQM',
@@ -222,15 +247,13 @@ def real_time():
         'status': 'status',
         'time': 'time'
     }
-    # Ensure the sort_field is valid
+    # Map to MongoDB field
     sort_field_mongo = field_map.get(sort_field, 'zone')
 
     try:
-        # Aggregation pipeline to get the most recent entry per zone
+        # Aggregation pipeline to get the latest entry per zone
         pipeline = [
-            {
-                '$sort': {'time': -1}  # Sort by 'time' in descending order to get the latest entry per zone
-            },
+            {'$sort': {'time': -1}},  # Sort by 'time' descending
             {
                 '$group': {
                     '_id': '$zone',
@@ -239,24 +262,19 @@ def real_time():
                     'sensors': {'$first': '$sensors'},
                     'DEVICE_ID': {'$first': '$DEVICE_ID'}
                 }
-            },
-            # We'll sort after merging with status
+            }
         ]
         zones_cursor = zone_collection.aggregate(pipeline)
         zones = list(zones_cursor)
 
-        # Fetch statuses from 'barriers' collection and create a map of status by zone
+        # Fetch statuses from 'barriers' collection and create a mapping
         barriers_cursor = barriers_collection.find({}, {'zone': 1, 'status': 1})
         status_map = {barrier['zone']: barrier['status'] for barrier in barriers_cursor}
 
-        # Attach the 'status' to each zone entry
+        # Attach 'status' to each zone entry
         for zone in zones:
             zone['status'] = status_map.get(zone['zone'], 'N/A')
 
-        # Now sort the zones list based on the selected field
-        from operator import itemgetter
-
-        # Handle nested fields for sorting
         def get_nested_field(data, field_path):
             fields = field_path.split('.')
             for field in fields:
@@ -271,16 +289,14 @@ def real_time():
             reverse=(sort_order == -1)
         )
 
-        # Check if the request is an AJAX call
+        # Handle AJAX requests
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            # Convert datetime objects to strings for JSON serialization
-            from bson import json_util
             return app.response_class(
                 json_util.dumps({'zones': zones}),
                 mimetype='application/json'
             )
 
-        # Render template with zones data
+        # Render the template with the zones data
         return render_template('real_time_data.html', zones=zones)
 
     except Exception as e:
@@ -288,14 +304,41 @@ def real_time():
         return render_template('error.html', message="An error occurred while fetching data from the database.")
 
 
-# Route to handle request for new measurements via MQTT
+@app.route('/RealTime/download', methods=['GET'])
+def download_real_time_data():
+    try:
+        # Aggregation pipeline to get the latest entry per zone
+        pipeline = [
+            {'$sort': {'time': -1}},  # Sort by 'time' descending
+            {
+                '$group': {
+                    '_id': '$zone',
+                    'zone': {'$first': '$zone'},
+                    'time': {'$first': '$time'},
+                    'sensors': {'$first': '$sensors'},
+                    'DEVICE_ID': {'$first': '$DEVICE_ID'}
+                }
+            }
+        ]
+        zones_cursor = zone_collection.aggregate(pipeline)
+        zones = list(zones_cursor)
 
+        barriers_cursor = barriers_collection.find({}, {'zone': 1, 'status': 1})
+        status_map = {barrier['zone']: barrier['status'] for barrier in barriers_cursor}
 
-"""---------REAL TIME AIR QUALITY PAGE----"""
+        for zone in zones:
+            zone['status'] = status_map.get(zone['zone'], 'N/A')
+
+        # Return the JSON data for download
+        return jsonify(zones)
+
+    except Exception as e:
+        print(f"Error fetching data for download: {e}")
+        return jsonify({"error": "An error occurred while fetching data"}), 500
+
 
 """ Control Panel Page"""
 
-# Flask route to render control panel page
 
 @app.route('/error_page')
 def error_page():
@@ -322,6 +365,7 @@ def login():
             return render_template('login.html', message="Invalid credentials. Please try again.")
     return render_template('login.html')
 
+
 @app.route('/control_panel', methods=['GET'])
 @basic_auth.required
 def control_panel():
@@ -330,14 +374,13 @@ def control_panel():
         barriers_cursor = barriers_collection.find()
         barriers = list(barriers_cursor)
 
-        # Aggregation pipeline to get the most recent entry per zone
         pipeline = [
             {
                 '$sort': {'time': -1}  # Sort by 'time' in descending order
             },
             {
                 '$group': {
-                    '_id': '$zone',          # Group by 'zone'
+                    '_id': '$zone',
                     'zone': {'$first': '$zone'},
                     'time': {'$first': '$time'},
                     'sensors': {'$first': '$sensors'},
@@ -364,7 +407,7 @@ def control_barrier():
     barrier_id = data['barrier_id']
     action = data['action']
     zone = data['zone']
-    time = datetime.datetime.now()
+    time = datetime.now()
     request_id = uuid.uuid4()
     id_str = str(request_id)
 
@@ -381,15 +424,14 @@ def control_barrier():
     client.publish(topic_barrier_control, payload)
     print(f"Published to MQTT topic {topic_barrier_control} with payload {payload}")
 
-    # Insert a new document in MongoDB to track the request with outcome pending
     insert_request = {
         'id_request': id_str,
         'barrier_id': barrier_id,
         'type': 'command',
         'data': action,
         'time': time,
-        'status': 'pending',
-        'outcome': 'pending'
+        'status': 'failed',
+        'outcome': 'failed'
     }
 
     try:
@@ -400,6 +442,8 @@ def control_barrier():
         return jsonify({'status': 'error', 'message': 'Failed to record barrier command'}), 500
 
     return jsonify({'status': 'success', 'request_id': id_str, 'message': f"Barrier {barrier_id} control command sent"})
+
+
 @app.route('/check_barrier_status', methods=['GET'])
 def check_barrier_status():
     request_id = request.args.get('request_id')
@@ -408,17 +452,22 @@ def check_barrier_status():
         result = requests_collection.find_one({'id_request': request_id})
         if result and result.get('status') == 'completed':
             return jsonify({'status': 'completed'})
+        elif result and result.get('status') == 'failed':
+            return jsonify({'status': 'failed'})
         else:
-            return jsonify({'status': 'pending'})
+            return jsonify({'status': 'failed'})
+
     except Exception as e:
         print(f"Error checking barrier status: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/notify', methods=['POST'])
 def notify():
     data = request.get_json()
     print(f"Notification received: {data}")  # Mock logging to console
     return jsonify({"status": "success", "message": "Notification received"}), 200
+
 
 # Example usage
 if __name__ == '__main__':
