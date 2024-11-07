@@ -85,6 +85,42 @@ const aqm = (co2Value * 1.964 / LEGAL_LIMIT_CO2_UGM3) * 100;
             }
         });
     }
+const AQM_THRESHOLD = 100;
+const enterpriseNotificationURL = "/notify"; // Mock endpoint on the server, can be any url like: www.vigilidelfuoco.it/alerts
+//this function checks the aqm values in the displayed table and trigger an alert+notification to the municipality if the aqm treshold is not respected
+function checkVisibleAQMValues() {
+    const aqmValues = document.querySelectorAll('.aqm-value');
+
+    aqmValues.forEach((element) => {
+        const aqmValue = parseFloat(element.innerText);
+
+        if (!isNaN(aqmValue) && aqmValue > AQM_THRESHOLD) {
+            // Check if the barrier status is "Closed" for this row
+            const statusElement = element.closest('tr').querySelector('.status-zone');
+            const isClosed = statusElement && statusElement.innerText === 'Closed';
+
+            if (isClosed) {
+                alert(`Warning: Air Quality Index in a visible zone exceeds the safe limit (${aqmValue}). Action recommended: Close barrier. Public entities have been warned`);
+
+                // Send HTTP POST request to notify enterprise
+                fetch(enterpriseNotificationURL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: `Air Quality Index exceeds threshold: ${aqmValue} ppm`,
+                        zone: element.closest('tr').querySelector('td').innerText
+                    })
+                })
+                .then(response => response.json())
+                .then(data => console.log('Enterprise notified:', data))
+                .catch(error => console.error('Error notifying enterprise:', error));
+            }
+        }
+    });
+}
+
 
     // Function to control the barrier
     function controlBarrier(barrierId, action, zone) {
@@ -143,9 +179,11 @@ const aqm = (co2Value * 1.964 / LEGAL_LIMIT_CO2_UGM3) * 100;
                 });
         }, pollInterval);
     }
-
-    // Run the AQM calculation function on page load to calculate AQM for each zone
-    document.addEventListener('DOMContentLoaded', calculateAQM);
+    setInterval(() => {
+        location.reload();
+    }, 60000);
+document.addEventListener('DOMContentLoaded', calculateAQM);
+document.addEventListener('DOMContentLoaded', checkVisibleAQMValues);
 </script>
 
 {% endblock %}
